@@ -18,10 +18,10 @@ def login():
         password = request.form.get('password')
         
         try:
-            # 1. Verify the password
+            # 1. Verify the password (THIS IS SUCCEEDING!)
             auth_response = supabase.auth.sign_in_with_password({"email": email, "password": password})
             
-            # 2. Look up their ID badge (Role) in the database
+            # 2. Look up their ID badge (Role) in the database (THIS IS CRASHING!)
             profile_response = supabase.table("profiles").select("role").eq("email", email).execute()
             
             # 3. Extract the role and create a success message
@@ -32,7 +32,8 @@ def login():
                 success_message = "Login successful, but you don't have a role assigned yet!"
 
         except Exception as e:
-            error_message = "Invalid email or password. Please try again."
+            # WE CHANGED THIS TO REVEAL THE TRUE ERROR
+            error_message = f"Python Crash Report: {str(e)}"
 
     # Send the messages back to the HTML page
     return render_template('login.html', error=error_message, success=success_message)
