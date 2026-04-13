@@ -4,7 +4,6 @@ from flask import Flask, request, render_template, session, redirect, url_for
 from supabase import create_client, Client
 
 app = Flask(__name__, template_folder="../templates")
-
 # This secret key is required to encrypt the user's session memory securely
 app.secret_key = os.environ.get("SYSTEM_MASTER_KEY", "fallback-secret-for-local-testing")
 
@@ -42,7 +41,10 @@ def login():
     if 'user_role' in session:
         if session['user_role'] == 'Clinician':
             return redirect(url_for('clinician_dashboard'))
-        # We will add Researcher and Auditor routing here soon
+        elif session['user_role'] == 'Researcher':
+            return redirect(url_for('researcher_dashboard'))
+        elif session['user_role'] == 'Auditor':
+            return redirect(url_for('auditor_dashboard'))
 
     error_message = request.args.get('error')
 
@@ -63,8 +65,10 @@ def login():
                 
                 if user_role == 'Clinician':
                     return redirect(url_for('clinician_dashboard'))
-                else:
-                    return render_template('login.html', success=f"Logged in as {user_role}. Dashboard coming soon!")
+                elif user_role == 'Researcher':
+                    return redirect(url_for('researcher_dashboard'))
+                elif user_role == 'Auditor':
+                    return redirect(url_for('auditor_dashboard'))
             else:
                 error_message = "No role assigned in the database."
 
@@ -83,9 +87,19 @@ def logout():
 # ==========================================
 
 @app.route('/clinician')
-@require_role('Clinician') # <-- THIS IS THE LOCK
+@require_role('Clinician')
 def clinician_dashboard():
     return render_template('clinician.html', email=session['user_email'])
+
+@app.route('/researcher')
+@require_role('Researcher')
+def researcher_dashboard():
+    return render_template('researcher.html', email=session['user_email'])
+
+@app.route('/auditor')
+@require_role('Auditor')
+def auditor_dashboard():
+    return render_template('auditor.html', email=session['user_email'])
 
 if __name__ == '__main__':
     app.run()
