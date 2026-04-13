@@ -3,7 +3,8 @@ name: Deploy to Vercel
 on:
   push:
     branches:
-      - main  # Change this to 'master' if your default branch is called master
+      - main
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -14,6 +15,11 @@ jobs:
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
+
+      # --- ADD THIS NEW STEP ---
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      # -------------------------
 
       - name: Pull Vercel Environment Information
         run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
