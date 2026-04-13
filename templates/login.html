@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Login</title>
+</head>
+<body>
+    <div style="max-width: 400px; margin: 50px auto; font-family: sans-serif;">
+        <h2>System Login</h2>
+        {% if error %}
+            <p style="color: red;">{{ error }}</p>
+        {% endif %}
+        <form method="POST" action="/">
+            <div style="margin-bottom: 15px;">
+                <label for="email">Email:</label><br>
+                <input type="email" id="email" name="email" required style="width: 100%; padding: 8px;">
+            </div>
+            <div style="margin-bottom: 15px;">
+                <label for="password">Password:</label><br>
+                <input type="password" id="password" name="password" required style="width: 100%; padding: 8px;">
+            </div>
+            <button type="submit" style="padding: 10px 15px; background-color: #0070f3; color: white; border: none; cursor: pointer;">
+                Log In
+            </button>
+        </form>
+    </div>
+</body>
+</html>
