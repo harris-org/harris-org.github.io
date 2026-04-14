@@ -1,6 +1,7 @@
 import os
 from functools import wraps
 from flask import Flask, request, render_template, session, redirect, url_for
+from werkzeug.exceptions import Unauthorized
 from supabase import create_client, Client
 
 app = Flask(__name__, template_folder="../templates")
@@ -11,6 +12,22 @@ app.secret_key = os.environ.get("SYSTEM_MASTER_KEY", "fallback-secret-for-local-
 URL = os.environ.get("SUPABASE_URL")
 KEY = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(URL, KEY)
+
+# ==========================================
+# CONSTANTS & HELPERS
+# ==========================================
+
+# Centralize role names to avoid typos and make changes easier
+class Roles:
+    CLINICIAN = 'Clinician'
+    RESEARCHER = 'Researcher'
+    AUDITOR = 'Auditor'
+
+ROLE_DASHBOARDS = {
+    Roles.CLINICIAN: 'clinician_dashboard',
+    Roles.RESEARCHER: 'researcher_dashboard',
+    Roles.AUDITOR: 'auditor_dashboard',
+}
 
 # ==========================================
 # THE BOUNCER (ACCESS CONTROL LOCK)
@@ -25,15 +42,8 @@ def require_role(role):
             
             # 2. Check if their badge matches the room's required role
             if session['user_role'] != role:
-                # INSTANT 403 FORBIDDEN PAGE (Stops the redirect loop)
-                return """
-                <div style='font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; text-align: center; margin-top: 100px; color: #333;'>
-                    <h2 style='color: #ef4444;'>🛑 Access Denied</h2>
-                    <p>Your current role does not have permission to view this page.</p>
-                    <br>
-                    <a href='/' style='padding: 10px 16px; background: #111; color: white; text-decoration: none; border-radius: 6px; font-weight: 500; display: inline-block; margin-top: 15px;'>Return to Dashboard</a>
-                </div>
-                """, 403
+                # Use a template for the error page instead of inline HTML.
+                return render_template('403.html'), 403
             
             # 3. Pass checks, let them in!
             return f(*args, **kwargs)
@@ -41,19 +51,21 @@ def require_role(role):
     return decorator
 
 # ==========================================
+# HELPER FUNCTIONS
+# ==========================================
+def _redirect_to_dashboard(role):
+    """Redirects user to their dashboard based on role."""
+    dashboard_route = ROLE_DASHBOARDS.get(role)
+    return redirect(url_for(dashboard_route)) if dashboard_route else redirect(url_for('login'))
+
+# ==========================================
 # ROUTES
 # ==========================================
 
 @app.route('/', methods=['GET', 'POST'])
 def login():
-    # If they are already logged in, route them to their respective dashboards
-    if 'user_role' in session:
-        if session['user_role'] == 'Clinician':
-            return redirect(url_for('clinician_dashboard'))
-        elif session['user_role'] == 'Researcher':
-            return redirect(url_for('researcher_dashboard'))
-        elif session['user_role'] == 'Auditor':
-            return redirect(url_for('auditor_dashboard'))
+    if 'user_role' in session and session['user_role'] in ROLE_DASHBOARDS:
+        return _redirect_to_dashboard(session['user_role'])
 
     error_message = request.args.get('error')
 
@@ -62,28 +74,26 @@ def login():
         password = request.form.get('password')
         
         try:
-            auth_response = supabase.auth.sign_in_with_password({"email": email, "password": password})
+            # Supabase-py raises an exception on login failure, so we don't need to check the response.
+            supabase.auth.sign_in_with_password({"email": email, "password": password})
             profile_response = supabase.table("Profiles").select("role").eq("email", email).execute()
             
             if len(profile_response.data) > 0:
                 user_role = profile_response.data[0]['role']
                 
-                # PIN THE BADGE TO THEIR SHIRT (Save to Session Memory)
-                session['user_email'] = email
-                session['user_role'] = user_role
-                
-                # Route to the correct locked door
-                if user_role == 'Clinician':
-                    return redirect(url_for('clinician_dashboard'))
-                elif user_role == 'Researcher':
-                    return redirect(url_for('researcher_dashboard'))
-                elif user_role == 'Auditor':
-                    return redirect(url_for('auditor_dashboard'))
+                if user_role in ROLE_DASHBOARDS:
+                    # PIN THE BADGE TO THEIR SHIRT (Save to Session Memory)
+                    session['user_email'] = email
+                    session['user_role'] = user_role
+                    return _redirect_to_dashboard(user_role)
+                else:
+                    error_message = "Your assigned role does not have a valid dashboard."
             else:
-                error_message = "No role assigned in the database."
-
-        except Exception as e:
-            error_message = f"System Report: {str(e)}"
+                error_message = "Login successful, but no role is assigned to your profile."
+        except Unauthorized:
+            error_message = "Invalid email or password."
+        except Exception:
+            error_message = "A system error occurred. Please try again later."
 
     return render_template('login.html', error=error_message)
 
@@ -97,17 +107,17 @@ def logout():
 # ==========================================
 
 @app.route('/clinician')
-@require_role('Clinician')
+@require_role(Roles.CLINICIAN)
 def clinician_dashboard():
     return render_template('clinician.html', email=session['user_email'])
 
 @app.route('/researcher')
-@require_role('Researcher')
+@require_role(Roles.RESEARCHER)
 def researcher_dashboard():
     return render_template('researcher.html', email=session['user_email'])
 
 @app.route('/auditor')
-@require_role('Auditor')
+@require_role(Roles.AUDITOR)
 def auditor_dashboard():
     return render_template('auditor.html', email=session['user_email'])
 
