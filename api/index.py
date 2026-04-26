@@ -1,8 +1,10 @@
 import os
+import base64
 from functools import wraps
 from flask import Flask, request, render_template, session, redirect, url_for
 from werkzeug.exceptions import Unauthorized
 from supabase import create_client, Client
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 app = Flask(__name__, template_folder="../templates")
 
@@ -106,10 +108,57 @@ def logout():
 # SECURE DASHBOARDS (ALL 3 ROLES)
 # ==========================================
 
-@app.route('/clinician')
+@app.route('/clinician', methods=['GET', 'POST'])
 @require_role(Roles.CLINICIAN)
 def clinician_dashboard():
-    return render_template('clinician.html', email=session['user_email'])
+    success_msg = None
+    error_msg = None
+
+    if request.method == 'POST':
+        patient_name = request.form.get('patient_name')
+        medical_notes = request.form.get('medical_notes')
+        
+        # Combine the data into a single string to encrypt
+        raw_data = f"Patient: {patient_name} | Diagnosis: {medical_notes}"
+        
+        try:
+            # 1. Retrieve the 256-bit Master Key from Vercel environment variables
+            master_key_hex = os.environ.get("SYSTEM_MASTER_KEY")
+            if not master_key_hex:
+                raise Exception("Encryption Key is missing from the server environment.")
+            
+            # Convert the hex string back into bytes for the cryptography library
+            master_key = bytes.fromhex(master_key_hex)
+            
+            # 2. Initialize the AES-GCM Cipher
+            # LO2/LO4 Justification: AES-GCM provides Authenticated Encryption.
+            # It ensures both Confidentiality (hiding data) and Integrity (detecting tampering via the auth tag),
+            # satisfying GDPR Article 9 requirements for state-of-the-art security of health data.
+            aesgcm = AESGCM(master_key)
+            
+            # 3. Generate a secure, random 96-bit Nonce (Number used ONCE)
+            nonce = os.urandom(12)
+            
+            # 4. Encrypt the data (AESGCM automatically attaches the authentication tag to the ciphertext)
+            ciphertext = aesgcm.encrypt(nonce, raw_data.encode('utf-8'), None)
+            
+            # 5. Encode to Base64 so the binary data can be safely stored as text in PostgreSQL
+            nonce_b64 = base64.b64encode(nonce).decode('utf-8')
+            ct_b64 = base64.b64encode(ciphertext).decode('utf-8')
+            
+            # 6. Save the locked record to Supabase
+            supabase.table('MedicalRecords').insert({
+                "clinician_email": session['user_email'],
+                "encrypted_payload": ct_b64,
+                "nonce": nonce_b64
+            }).execute()
+            
+            success_msg = "Patient record successfully encrypted (AES-256-GCM) and stored securely."
+            
+        except Exception as e:
+            error_msg = f"Cryptographic Error: {str(e)}"
+
+    return render_template('clinician.html', email=session['user_email'], success=success_msg, error=error_msg)
 
 @app.route('/researcher')
 @require_role(Roles.RESEARCHER)
