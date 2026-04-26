@@ -15,8 +15,9 @@ from cryptography.exceptions import InvalidSignature
 
 app = Flask(__name__, template_folder="../templates")
 
-# This secret key is required to encrypt the user's session memory securely
-app.secret_key = os.environ.get("SYSTEM_MASTER_KEY", "fallback-secret-for-local-testing")
+app.secret_key = os.environ.get("SYSTEM_MASTER_KEY")
+if not app.secret_key:
+    raise ValueError("CRITICAL: SYSTEM_MASTER_KEY environment variable is missing.")
 
 URL = os.environ.get("SUPABASE_URL")
 KEY = os.environ.get("SUPABASE_KEY")
