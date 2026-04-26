@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.asymmetric import padding as rsa_padding
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
+from cryptography.exceptions import InvalidSignature
 
 app = Flask(__name__, template_folder="../templates")
 
@@ -238,7 +239,57 @@ def researcher_dashboard():
 @app.route('/auditor')
 @require_role(Roles.AUDITOR)
 def auditor_dashboard():
-    return render_template('auditor.html', email=session['user_email'])
+    error_msg = None
+    try:
+        # Fetch all system records
+        response = supabase.table('MedicalRecords').select('*').order('id', desc=True).execute()
+        records = response.data
+
+        # LO2/LO4 Justification: Asymmetric verification ensures non-repudiation.
+        # The auditor uses the public key to verify the signature without needing the private key or the underlying plain text.
+        for r in records:
+            r['signature_valid'] = False
+            r['verification_message'] = "Awaiting Signature"
+
+            if r.get('researcher_signature') and r.get('researcher_public_key'):
+                try:
+                    # 1. Load the Researcher's Public Key from the database
+                    public_key = serialization.load_pem_public_key(r['researcher_public_key'].encode('utf-8'))
+
+                    # 2. Reconstruct the exact encrypted payload that was originally signed
+                    original_payload = r['encrypted_payload']
+                    encrypted_findings = r['researcher_encrypted_findings']
+                    data_to_verify = f"{original_payload}|{encrypted_findings}".encode('utf-8')
+
+                    # 3. Decode the Base64 signature back to bytes
+                    signature_bytes = base64.b64decode(r['researcher_signature'])
+
+                    # 4. Verify the Signature
+                    # If this succeeds, it silently passes. If the data or signature was altered, it throws InvalidSignature.
+                    public_key.verify(
+                        signature_bytes,
+                        data_to_verify,
+                        rsa_padding.PSS(
+                            mgf=rsa_padding.MGF1(hashes.SHA256()),
+                            salt_length=rsa_padding.PSS.MAX_LENGTH
+                        ),
+                        hashes.SHA256()
+                    )
+                    r['signature_valid'] = True
+                    r['verification_message'] = "✅ VALID: Cryptographic Integrity & Authenticity Confirmed"
+                
+                except InvalidSignature:
+                    r['signature_valid'] = False
+                    r['verification_message'] = "❌ TAMPERING DETECTED: Signature Verification Failed"
+                except Exception as e:
+                    r['signature_valid'] = False
+                    r['verification_message'] = f"⚠️ Verification Error: {str(e)}"
+
+    except Exception as e:
+        error_msg = f"System Error: {str(e)}"
+        records = []
+
+    return render_template('auditor.html', email=session['user_email'], records=records, error=error_msg)
 
 if __name__ == '__main__':
     app.run()
