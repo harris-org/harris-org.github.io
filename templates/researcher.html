@@ -6,11 +6,23 @@
     <title>Researcher Dashboard</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background-color: #f4f4f9; padding: 40px; color: #333; }
-        .card { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); max-width: 600px; margin: 0 auto; }
+        .card { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); max-width: 700px; margin: 0 auto; }
         h2 { margin-top: 0; }
         .logout-btn { display: inline-block; margin-top: 20px; padding: 10px 16px; background: #ef4444; color: white; text-decoration: none; border-radius: 6px; font-weight: 500; }
         .logout-btn:hover { background: #dc2626; }
         hr { border: none; border-top: 1px solid #e5e7eb; margin: 24px 0; }
+        
+        .success-msg { background: #dcfce7; color: #166534; padding: 12px; border-radius: 6px; margin-bottom: 20px; border: 1px solid #86efac; font-size: 14px; }
+        .error-msg { background: #fee2e2; color: #ef4444; padding: 12px; border-radius: 6px; margin-bottom: 20px; border: 1px solid #f87171; font-size: 14px; }
+        
+        .record-box { background: #f9fafb; border: 1px solid #d1d5db; border-radius: 8px; padding: 15px; margin-bottom: 15px; }
+        .record-box h4 { margin: 0 0 10px 0; color: #111; }
+        .decrypted-text { background: #fff; padding: 10px; border: 1px dashed #9ca3af; border-radius: 4px; font-family: monospace; margin-bottom: 15px; }
+        
+        textarea { width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit; box-sizing: border-box; resize: vertical; min-height: 80px; margin-bottom: 10px;}
+        .sign-btn { background: #2563eb; color: white; border: none; padding: 10px 16px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 14px; }
+        .sign-btn:hover { background: #1d4ed8; }
+        .signed-badge { display: inline-block; background: #dcfce7; color: #166534; padding: 8px 12px; border-radius: 6px; font-weight: 500; font-size: 14px; border: 1px solid #86efac; margin-top: 10px;}
     </style>
 </head>
 <body>
@@ -20,8 +32,41 @@
         
         <hr>
         
-        <h3>Data Access & Signing</h3>
-        <p style="color: #6b7280; font-size: 14px;"><em>(Data decryption and RSA digital signatures will go here.)</em></p>
+        <h3>Clinical Data Review</h3>
+        
+        {% if success %}
+            <div class="success-msg">✅ {{ success }}</div>
+        {% endif %}
+        {% if error %}
+            <div class="error-msg">🛑 {{ error }}</div>
+        {% endif %}
+
+        {% for record in records %}
+            <div class="record-box">
+                <h4>Record #{{ record.id }} (Uploaded by: {{ record.clinician_email }})</h4>
+                <div class="decrypted-text">
+                    <strong>Clinician Notes:</strong><br>
+                    {{ record.decrypted_text }}
+                </div>
+                
+                {% if record.researcher_signature %}
+                    <div class="decrypted-text" style="border-color: #2563eb;">
+                        <strong>Your Encrypted Findings:</strong><br>
+                        {{ record.decrypted_findings }}
+                    </div>
+                    <div class="signed-badge">✅ Digitally Signed & Approved</div>
+                {% else %}
+                    <form method="POST" action="/researcher">
+                        <input type="hidden" name="record_id" value="{{ record.id }}">
+                        <label for="researcher_findings_{{ record.id }}" style="display: block; margin-bottom: 5px; font-size: 14px; font-weight: 500;">Add Research Findings:</label>
+                        <textarea id="researcher_findings_{{ record.id }}" name="researcher_findings" required placeholder="Enter research notes to be encrypted..."></textarea>
+                        <button type="submit" class="sign-btn">Encrypt Findings & Sign Data</button>
+                    </form>
+                {% endif %}
+            </div>
+        {% else %}
+            <p>No medical records found in the system.</p>
+        {% endfor %}
         
         <a href="/logout" class="logout-btn">Log Out</a>
     </div>
